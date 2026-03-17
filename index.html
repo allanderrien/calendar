@@ -226,22 +226,11 @@
   .d.conge  { background: var(--green-bg);  color: var(--green);  font-weight: 500; }
   .d.tele   { background: var(--purple-bg); color: var(--purple); font-weight: 500; }
   .d.recup  { background: var(--amber-bg);  color: var(--amber);  font-weight: 500; }
+  .d.has-rdv { background: var(--blue-bg);  color: var(--accent); font-weight: 500; }
   .d.today  { box-shadow: 0 0 0 1px var(--accent2) inset; }
   .d.workday { cursor: pointer; }
   .d.workday:hover { background: var(--surface2); color: var(--accent2); }
-  .d.conge:hover  { opacity: 0.8; }
-  .d.tele:hover   { opacity: 0.8; }
-  .d.recup:hover  { opacity: 0.8; }
-
-  /* RDV dot indicator */
-  .rdv-dot {
-    display: block;
-    width: 4px; height: 4px;
-    border-radius: 50%;
-    background: var(--accent);
-    margin: 1px auto 0;
-  }
-  .d.ferie .rdv-dot, .d.weekend .rdv-dot { background: var(--accent2); }
+  .d.conge:hover, .d.tele:hover, .d.recup:hover, .d.has-rdv:hover { opacity: 0.8; }
 
   /* ── Legend ── */
   .legend { display: flex; gap: 14px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
@@ -726,12 +715,14 @@ function renderCal() {
       const isTd = s===todayStr;
 
       let cls = 'd';
-      if (fe)            cls += ' ferie';
-      else if (we)       cls += ' weekend';
+      if (fe)                cls += ' ferie';
+      else if (we)           cls += ' weekend';
       else if (mk==='conge') cls += ' conge workday';
       else if (mk==='tele')  cls += ' tele workday';
       else if (mk==='recup') cls += ' recup workday';
+      else if (hasRdv)       cls += ' has-rdv workday';
       else                   cls += ' workday';
+      if (hasRdv && mk)      cls += ' has-rdv';
       if (isTd) cls += ' today';
 
       const rdvInfo = hasRdv ? `${rdvData[s].client}${rdvData[s].ville ? ' — '+rdvData[s].ville : ''}` : '';
@@ -739,8 +730,7 @@ function renderCal() {
       const titleParts = [ferieInfo, mk ? mk.toUpperCase() : '', rdvInfo].filter(Boolean);
       const title = titleParts.join(' · ');
 
-      const dot = hasRdv ? `<span class="rdv-dot"></span>` : '';
-      html += `<div class="${cls}" onclick="clickDay('${s}')" title="${title}">${day}${dot}</div>`;
+      html += `<div class="${cls}" onclick="clickDay('${s}')" title="${title}">${day}</div>`;
     }
 
     html += `</div></div>`;
