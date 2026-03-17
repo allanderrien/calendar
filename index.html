@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Calendrier Luxembourg</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
 
@@ -24,6 +29,7 @@
     --amber-bg: #2c1e06;
     --red: #f87171;
     --red-bg: #2c0f0f;
+    --blue-bg: #0d1e3a;
     --mono: 'DM Mono', monospace;
     --sans: 'Syne', sans-serif;
   }
@@ -47,6 +53,7 @@
     gap: 16px;
     flex-wrap: wrap;
   }
+  .header-left { display: flex; align-items: center; gap: 12px; }
   header h1 {
     font-size: 1.5rem;
     font-weight: 800;
@@ -56,6 +63,16 @@
   }
   header h1 span { color: var(--muted); font-weight: 400; font-size: 0.9rem; }
 
+  .sync-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+    flex-shrink: 0;
+  }
+  .sync-dot.ok { background: var(--green); }
+  .sync-dot.err { background: var(--red); }
+
   /* ── Params ── */
   .params {
     display: flex;
@@ -63,11 +80,7 @@
     flex-wrap: wrap;
     align-items: flex-end;
   }
-  .param {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+  .param { display: flex; flex-direction: column; gap: 4px; }
   .param label {
     font-family: var(--mono);
     font-size: 0.6rem;
@@ -119,30 +132,14 @@
   .kpi.c::before { background: var(--green); }
   .kpi.t::before { background: var(--purple); }
   .kpi.r::before { background: var(--amber); }
-  .kpi .val {
-    font-family: var(--mono);
-    font-size: 2rem;
-    font-weight: 500;
-    line-height: 1;
-  }
+  .kpi .val { font-family: var(--mono); font-size: 2rem; font-weight: 500; line-height: 1; }
   .kpi.c .val { color: var(--green); }
   .kpi.t .val { color: var(--purple); }
   .kpi.r .val { color: var(--amber); }
-  .kpi .sub {
-    font-size: 0.62rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    margin-top: 4px;
-  }
-  .kpi .used {
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    color: var(--muted);
-    margin-top: 6px;
-  }
+  .kpi .sub { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; margin-top: 4px; }
+  .kpi .used { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); margin-top: 6px; }
 
-  /* ── Mode selector ── */
+  /* ── Toolbar ── */
   .toolbar {
     display: flex;
     gap: 8px;
@@ -163,10 +160,11 @@
     white-space: nowrap;
   }
   .mode-btn:hover { border-color: var(--accent); color: var(--accent2); }
-  .mode-btn.active-c { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+  .mode-btn.active-c { border-color: var(--green);  color: var(--green);  background: var(--green-bg); }
   .mode-btn.active-t { border-color: var(--purple); color: var(--purple); background: var(--purple-bg); }
-  .mode-btn.active-r { border-color: var(--amber); color: var(--amber); background: var(--amber-bg); }
-  .mode-btn.active-x { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+  .mode-btn.active-r { border-color: var(--amber);  color: var(--amber);  background: var(--amber-bg); }
+  .mode-btn.active-x { border-color: var(--red);    color: var(--red);    background: var(--red-bg); }
+  .mode-btn.active-rdv { border-color: var(--accent); color: var(--accent); background: var(--blue-bg); }
 
   .copy-btn {
     margin-left: auto;
@@ -183,14 +181,8 @@
     white-space: nowrap;
   }
   .copy-btn:hover { background: #3b7de8; }
-  .copy-btn.ok { background: var(--green); color: #000; }
 
-  .hint {
-    font-family: var(--mono);
-    font-size: 0.62rem;
-    color: var(--muted);
-    margin-bottom: 16px;
-  }
+  .hint { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); margin-bottom: 16px; }
 
   /* ── Calendar grid ── */
   .cal-grid {
@@ -201,12 +193,7 @@
   @media (max-width: 900px) { .cal-grid { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 600px) { .cal-grid { grid-template-columns: repeat(2, 1fr); } }
 
-  .month-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-  }
+  .month-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .month-name {
     padding: 8px 12px;
     font-size: 0.78rem;
@@ -217,82 +204,64 @@
     background: var(--surface2);
     border-bottom: 1px solid var(--border);
   }
-  .dow-row {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    padding: 4px 4px 2px;
-    gap: 1px;
-  }
-  .dow-row span {
-    text-align: center;
-    font-family: var(--mono);
-    font-size: 0.55rem;
-    color: var(--muted);
-    padding: 2px 0;
-  }
-  .dow-row span:nth-child(6),
-  .dow-row span:nth-child(7) { color: var(--red); opacity: 0.7; }
+  .dow-row { display: grid; grid-template-columns: repeat(7, 1fr); padding: 4px 4px 2px; gap: 1px; }
+  .dow-row span { text-align: center; font-family: var(--mono); font-size: 0.55rem; color: var(--muted); padding: 2px 0; }
+  .dow-row span:nth-child(6), .dow-row span:nth-child(7) { color: var(--red); opacity: 0.7; }
 
-  .days-row {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    padding: 2px 4px 6px;
-    gap: 1px;
-  }
+  .days-row { display: grid; grid-template-columns: repeat(7, 1fr); padding: 2px 4px 6px; gap: 1px; }
+
   .d {
     text-align: center;
     font-family: var(--mono);
     font-size: 0.62rem;
-    padding: 3px 1px;
+    padding: 3px 1px 2px;
     border-radius: 4px;
-    line-height: 1.4;
+    line-height: 1.3;
     user-select: none;
+    position: relative;
   }
   .d.empty { }
   .d.weekend { color: var(--red); opacity: 0.6; }
   .d.ferie { background: var(--red-bg); color: var(--red); font-weight: 500; opacity: 1 !important; cursor: default; }
-  .d.conge { background: var(--green-bg); color: var(--green); font-weight: 500; }
-  .d.tele { background: var(--purple-bg); color: var(--purple); font-weight: 500; }
-  .d.recup { background: var(--amber-bg); color: var(--amber); font-weight: 500; }
-  .d.today { box-shadow: 0 0 0 1px var(--accent2) inset; }
+  .d.conge  { background: var(--green-bg);  color: var(--green);  font-weight: 500; }
+  .d.tele   { background: var(--purple-bg); color: var(--purple); font-weight: 500; }
+  .d.recup  { background: var(--amber-bg);  color: var(--amber);  font-weight: 500; }
+  .d.today  { box-shadow: 0 0 0 1px var(--accent2) inset; }
   .d.workday { cursor: pointer; }
   .d.workday:hover { background: var(--surface2); color: var(--accent2); }
+  .d.conge:hover  { opacity: 0.8; }
+  .d.tele:hover   { opacity: 0.8; }
+  .d.recup:hover  { opacity: 0.8; }
+
+  /* RDV dot indicator */
+  .rdv-dot {
+    display: block;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin: 1px auto 0;
+  }
+  .d.ferie .rdv-dot, .d.weekend .rdv-dot { background: var(--accent2); }
 
   /* ── Legend ── */
-  .legend {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
-    margin-top: 18px;
-    flex-wrap: wrap;
-  }
-  .leg {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-family: var(--mono);
-    font-size: 0.62rem;
-    color: var(--muted);
-  }
-  .ldot {
-    width: 10px; height: 10px;
-    border-radius: 3px;
-    flex-shrink: 0;
-  }
-  .ldot.f { background: var(--red-bg); border: 1px solid var(--red); }
-  .ldot.c { background: var(--green-bg); border: 1px solid var(--green); }
-  .ldot.t { background: var(--purple-bg); border: 1px solid var(--purple); }
-  .ldot.r { background: var(--amber-bg); border: 1px solid var(--amber); }
+  .legend { display: flex; gap: 14px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+  .leg { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+  .ldot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .ldot.f  { background: var(--red-bg);    border: 1px solid var(--red); }
+  .ldot.c  { background: var(--green-bg);  border: 1px solid var(--green); }
+  .ldot.t  { background: var(--purple-bg); border: 1px solid var(--purple); }
+  .ldot.r  { background: var(--amber-bg);  border: 1px solid var(--amber); }
+  .ldot.rdv { background: var(--blue-bg); border: 1px solid var(--accent); border-radius: 50%; }
 
-  /* ── Fériés list ── */
-  .feries-section {
+  /* ── Sections (RDV list + Fériés) ── */
+  .section {
     margin-top: 24px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 16px;
   }
-  .feries-section h3 {
+  .section h3 {
     font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -300,24 +269,107 @@
     color: var(--muted);
     margin-bottom: 10px;
   }
-  .feries-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 6px;
-  }
-  .ferie-item {
+
+  /* RDV list */
+  .rdv-list { display: flex; flex-direction: column; gap: 6px; }
+  .rdv-item {
     display: flex;
-    gap: 8px;
     align-items: center;
-    font-size: 0.72rem;
+    gap: 10px;
+    font-size: 0.75rem;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
   }
-  .ferie-item .fdate {
-    font-family: var(--mono);
-    color: var(--red);
-    font-size: 0.65rem;
-    min-width: 70px;
-  }
+  .rdv-item:hover { border-color: var(--accent); }
+  .rdv-item .rdate { font-family: var(--mono); color: var(--accent); font-size: 0.65rem; min-width: 90px; }
+  .rdv-item .rclient { color: var(--text); font-weight: 600; flex: 1; }
+  .rdv-item .rville { font-family: var(--mono); color: var(--muted); font-size: 0.68rem; }
+  .rdv-empty { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); font-style: italic; }
+
+  /* Fériés list */
+  .feries-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+  .ferie-item { display: flex; gap: 8px; align-items: center; font-size: 0.72rem; }
+  .ferie-item .fdate { font-family: var(--mono); color: var(--red); font-size: 0.65rem; min-width: 70px; }
   .ferie-item .fname { color: var(--text); }
+
+  /* ── Modal ── */
+  #modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    position: relative;
+  }
+  .modal h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--accent2);
+    margin-bottom: 4px;
+  }
+  .modal .modal-date {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+  .modal-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+  .modal-field label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+  .modal-field input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  .modal-field input:focus { border-color: var(--accent); }
+  .modal-field input::placeholder { color: var(--muted); }
+
+  .modal-actions { display: flex; gap: 8px; margin-top: 20px; }
+  .modal-actions button {
+    flex: 1;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: none;
+    font-family: var(--sans);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-save { background: var(--accent); color: #fff; }
+  .btn-save:hover { background: #3b7de8; }
+  .btn-delete { background: var(--red-bg); color: var(--red); border: 1px solid var(--red) !important; }
+  .btn-delete:hover { background: #3d1515; }
+  .btn-cancel { background: var(--surface2); color: var(--muted); border: 1px solid var(--border) !important; }
+  .btn-cancel:hover { color: var(--text); }
 
   /* Toast */
   #toast {
@@ -341,7 +393,8 @@
 <body>
 
 <header>
-  <div>
+  <div class="header-left">
+    <div class="sync-dot" id="syncDot" title="Synchronisation Firebase"></div>
     <h1>Calendrier <span id="yearLabel">2026</span> <span>Luxembourg 🇱🇺</span></h1>
   </div>
   <div class="params">
@@ -387,13 +440,14 @@
 </div>
 
 <div class="toolbar">
-  <button class="mode-btn active-c" id="btn-conge"   onclick="setMode('conge')">☀️ Congé</button>
-  <button class="mode-btn"           id="btn-tele"    onclick="setMode('tele')">💻 Télétravail</button>
-  <button class="mode-btn"           id="btn-recup"   onclick="setMode('recup')">🔄 Récup</button>
-  <button class="mode-btn"           id="btn-reset"   onclick="setMode('reset')">🗑 Effacer</button>
-  <button class="copy-btn"                            onclick="copySheets()">📋 Copier pour Sheets</button>
+  <button class="mode-btn active-c" id="btn-conge" onclick="setMode('conge')">☀️ Congé</button>
+  <button class="mode-btn"          id="btn-tele"  onclick="setMode('tele')">💻 Télétravail</button>
+  <button class="mode-btn"          id="btn-recup" onclick="setMode('recup')">🔄 Récup</button>
+  <button class="mode-btn"          id="btn-rdv"   onclick="setMode('rdv')">📍 RDV</button>
+  <button class="mode-btn"          id="btn-reset" onclick="setMode('reset')">🗑 Effacer</button>
+  <button class="copy-btn"                         onclick="copySheets()">📋 Copier pour Sheets</button>
 </div>
-<div class="hint">← Cliquez sur un jour ouvrable pour le marquer · Cliquez à nouveau pour retirer la marque</div>
+<div class="hint" id="hint">← Cliquez sur un jour ouvrable pour le marquer · Cliquez à nouveau pour retirer la marque</div>
 
 <div class="cal-grid" id="calGrid"></div>
 
@@ -402,16 +456,57 @@
   <div class="leg"><div class="ldot c"></div>Congé</div>
   <div class="leg"><div class="ldot t"></div>Télétravail</div>
   <div class="leg"><div class="ldot r"></div>Récup</div>
+  <div class="leg"><div class="ldot rdv"></div>RDV</div>
 </div>
 
-<div class="feries-section">
+<div class="section" id="rdvSection">
+  <h3>📍 Rendez-vous <span id="rdvYearLabel">2026</span></h3>
+  <div class="rdv-list" id="rdvList"></div>
+</div>
+
+<div class="section">
   <h3 id="feriesTitle">Jours fériés luxembourgeois 2026</h3>
   <div class="feries-list" id="feriesList"></div>
 </div>
 
-<div id="toast">✅ Copié — collez dans Google Sheets (Ctrl+V)</div>
+<!-- RDV Modal -->
+<div id="modal-overlay" onclick="overlayClick(event)">
+  <div class="modal">
+    <h2>📍 Rendez-vous</h2>
+    <div class="modal-date" id="modal-date"></div>
+    <div class="modal-field">
+      <label>Client</label>
+      <input type="text" id="rdv-client" placeholder="Nom du client…" onkeydown="modalKey(event)">
+    </div>
+    <div class="modal-field">
+      <label>Ville</label>
+      <input type="text" id="rdv-ville" placeholder="Ville…" onkeydown="modalKey(event)">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-save"   onclick="saveRdv()">Enregistrer</button>
+      <button class="btn-delete" id="btn-del-rdv" onclick="deleteRdv()" style="display:none">Supprimer</button>
+      <button class="btn-cancel" onclick="closeModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
 
 <script>
+// ══════════════════════════════════════════════
+//  ⚙️  FIREBASE CONFIG — remplacer les valeurs
+// ══════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey:            "VOTRE_API_KEY",
+  authDomain:        "VOTRE_PROJECT.firebaseapp.com",
+  databaseURL:       "https://VOTRE_PROJECT-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId:         "VOTRE_PROJECT",
+  storageBucket:     "VOTRE_PROJECT.appspot.com",
+  messagingSenderId: "VOTRE_SENDER_ID",
+  appId:             "VOTRE_APP_ID"
+};
+// ══════════════════════════════════════════════
+
 const FERIES_BY_YEAR = {
   2026: {
     '2026-01-01': "Jour de l'An",
@@ -455,111 +550,248 @@ const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin',
                    'Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const DOW = ['L','M','M','J','V','S','D'];
 
-let markedByYear = { 2026: {}, 2027: {}, 2028: {} };
-let mode = 'conge';
+// State
+let marked = {};          // 'YYYY-MM-DD' → 'conge'|'tele'|'recup'
+let rdvData = {};         // 'YYYY-MM-DD' → { client, ville }
 let currentYear = 2026;
+let mode = 'conge';
+let modalDate = null;
 
 const todayStr = new Date().toISOString().slice(0,10);
 
-function getFeries(){ return FERIES_BY_YEAR[currentYear]; }
-function getMarked(){ return markedByYear[currentYear]; }
+// ── Firebase init ──
+let db = null;
+try {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.database();
+  db.ref('.info/connected').on('value', snap => {
+    const dot = document.getElementById('syncDot');
+    dot.className = 'sync-dot ' + (snap.val() ? 'ok' : 'err');
+  });
+  db.ref('/').on('value', snap => {
+    const data = snap.val() || {};
+    marked  = data.marked  || {};
+    rdvData = data.rdv     || {};
+    renderCal();
+    renderRdvList();
+    update();
+  });
+} catch(e) {
+  console.warn('Firebase non configuré', e);
+  document.getElementById('syncDot').className = 'sync-dot err';
+}
 
-function pad(n){ return String(n).padStart(2,'0'); }
-function ds(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
-function isWE(y,m,d){ const w=new Date(y,m,d).getDay(); return w===0||w===6; }
-function isFerie(s){ return !!getFeries()[s]; }
-function isWorkday(y,m,d){ return !isWE(y,m,d) && !isFerie(ds(y,m,d)); }
+function dbSet(path, val) {
+  if (!db) return;
+  db.ref(path).set(val);
+}
+function dbRemove(path) {
+  if (!db) return;
+  db.ref(path).remove();
+}
 
-function changeYear(y){
+// ── Helpers ──
+function getFeries() { return FERIES_BY_YEAR[currentYear]; }
+function pad(n) { return String(n).padStart(2,'0'); }
+function ds(y,m,d) { return `${y}-${pad(m+1)}-${pad(d)}`; }
+function isWE(y,m,d) { const w = new Date(y,m,d).getDay(); return w===0||w===6; }
+function isFerie(s) { return !!getFeries()[s]; }
+function isWorkday(y,m,d) { return !isWE(y,m,d) && !isFerie(ds(y,m,d)); }
+
+function fmtDate(s) {
+  const d = new Date(s+'T00:00:00');
+  const dn = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
+  return `${dn} ${pad(d.getDate())} ${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// ── Year ──
+function changeYear(y) {
   currentYear = +y;
   document.getElementById('yearLabel').textContent = currentYear;
+  document.getElementById('rdvYearLabel').textContent = currentYear;
   document.getElementById('feriesTitle').textContent = `Jours fériés luxembourgeois ${currentYear}`;
   renderCal();
+  renderRdvList();
   renderFeries();
   update();
 }
 
-function setMode(m){
+// ── Mode ──
+function setMode(m) {
   mode = m;
-  const map = { conge:'active-c', tele:'active-t', recup:'active-r', reset:'active-x' };
-  ['conge','tele','recup','reset'].forEach(k => {
+  const map = { conge:'active-c', tele:'active-t', recup:'active-r', rdv:'active-rdv', reset:'active-x' };
+  ['conge','tele','recup','rdv','reset'].forEach(k => {
     const btn = document.getElementById('btn-'+k);
-    btn.className = 'mode-btn' + (k===m ? ' '+map[k] : '');
+    if (btn) btn.className = 'mode-btn' + (k===m ? ' '+map[k] : '');
   });
+  const hints = {
+    conge:  '← Cliquez sur un jour ouvrable pour marquer un congé',
+    tele:   '← Cliquez sur un jour ouvrable pour marquer du télétravail',
+    recup:  '← Cliquez sur un jour ouvrable pour marquer une récup',
+    rdv:    '← Cliquez sur n\'importe quel jour pour ajouter/modifier un RDV',
+    reset:  '← Cliquez sur un jour pour effacer son marquage',
+  };
+  document.getElementById('hint').textContent = hints[m] || '';
 }
 
-function clickDay(s){
-  const [y,mo,d] = s.split('-').map(Number);
-  if(!isWorkday(y,mo-1,d)) return;
-  const marked = getMarked();
-  if(mode==='reset'){ delete marked[s]; }
-  else {
-    if(marked[s]===mode) delete marked[s];
-    else marked[s]=mode;
+// ── Day click ──
+function clickDay(s) {
+  if (mode === 'rdv') {
+    openModal(s);
+    return;
   }
-  renderCal();
-  update();
+  const [y,mo,d] = s.split('-').map(Number);
+  if (!isWorkday(y,mo-1,d)) return;
+  if (mode === 'reset') {
+    dbRemove('marked/'+s);
+  } else {
+    if (marked[s] === mode) dbRemove('marked/'+s);
+    else dbSet('marked/'+s, mode);
+  }
 }
 
-function getWeek(d){
-  const dt=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
-  const day=dt.getUTCDay()||7;
+// ── RDV Modal ──
+function openModal(s) {
+  modalDate = s;
+  const existing = rdvData[s];
+  document.getElementById('modal-date').textContent = fmtDate(s);
+  document.getElementById('rdv-client').value = existing ? existing.client : '';
+  document.getElementById('rdv-ville').value  = existing ? existing.ville  : '';
+  document.getElementById('btn-del-rdv').style.display = existing ? 'block' : 'none';
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('rdv-client').focus(), 50);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  modalDate = null;
+}
+
+function overlayClick(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}
+
+function modalKey(e) {
+  if (e.key === 'Enter')  saveRdv();
+  if (e.key === 'Escape') closeModal();
+}
+
+function saveRdv() {
+  const client = document.getElementById('rdv-client').value.trim();
+  const ville  = document.getElementById('rdv-ville').value.trim();
+  if (!client && !ville) { deleteRdv(); return; }
+  dbSet('rdv/'+modalDate, { client, ville });
+  closeModal();
+  toast('📍 RDV enregistré');
+}
+
+function deleteRdv() {
+  if (!modalDate) return;
+  dbRemove('rdv/'+modalDate);
+  closeModal();
+}
+
+// ── Render calendar ──
+function getWeek(d) {
+  const dt = new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day = dt.getUTCDay() || 7;
   dt.setUTCDate(dt.getUTCDate()+4-day);
-  const y0=new Date(Date.UTC(dt.getUTCFullYear(),0,1));
+  const y0 = new Date(Date.UTC(dt.getUTCFullYear(),0,1));
   return Math.ceil((((dt-y0)/86400000)+1)/7);
 }
 
-function renderCal(){
+function renderCal() {
   const grid = document.getElementById('calGrid');
-  const marked = getMarked();
   grid.innerHTML = '';
-  for(let m=0;m<12;m++){
-    const dIM = new Date(currentYear,m+1,0).getDate();
+  const feries = getFeries();
+
+  for (let m=0; m<12; m++) {
+    const dIM   = new Date(currentYear,m+1,0).getDate();
     const first = new Date(currentYear,m,1).getDay();
-    const pivot = first===0?6:first-1;
+    const pivot = first===0 ? 6 : first-1;
 
     let html = `<div class="month-card">
       <div class="month-name">${MONTHS_FR[m]}</div>
       <div class="dow-row">${DOW.map(x=>`<span>${x}</span>`).join('')}</div>
       <div class="days-row">`;
 
-    for(let i=0;i<pivot;i++) html+=`<div class="d empty"></div>`;
+    for (let i=0; i<pivot; i++) html += `<div class="d empty"></div>`;
 
-    for(let day=1;day<=dIM;day++){
-      const s=ds(currentYear,m,day);
-      const we=isWE(currentYear,m,day);
-      const fe=isFerie(s);
-      const mk=marked[s];
-      const isTd=s===todayStr;
+    for (let day=1; day<=dIM; day++) {
+      const s   = ds(currentYear,m,day);
+      const we  = isWE(currentYear,m,day);
+      const fe  = isFerie(s);
+      const mk  = marked[s];
+      const hasRdv = !!rdvData[s];
+      const isTd = s===todayStr;
 
-      let cls='d';
-      if(fe) cls+=' ferie';
-      else if(we) cls+=' weekend';
-      else if(mk==='conge') cls+=' conge workday';
-      else if(mk==='tele') cls+=' tele workday';
-      else if(mk==='recup') cls+=' recup workday';
-      else cls+=' workday';
-      if(isTd) cls+=' today';
+      let cls = 'd';
+      if (fe)            cls += ' ferie';
+      else if (we)       cls += ' weekend';
+      else if (mk==='conge') cls += ' conge workday';
+      else if (mk==='tele')  cls += ' tele workday';
+      else if (mk==='recup') cls += ' recup workday';
+      else                   cls += ' workday';
+      if (isTd) cls += ' today';
 
-      const title = fe ? getFeries()[s] : (mk||'');
-      html+=`<div class="${cls}" onclick="clickDay('${s}')" title="${title}">${day}</div>`;
+      const rdvInfo = hasRdv ? `${rdvData[s].client}${rdvData[s].ville ? ' — '+rdvData[s].ville : ''}` : '';
+      const ferieInfo = fe ? feries[s] : '';
+      const titleParts = [ferieInfo, mk ? mk.toUpperCase() : '', rdvInfo].filter(Boolean);
+      const title = titleParts.join(' · ');
+
+      const dot = hasRdv ? `<span class="rdv-dot"></span>` : '';
+      html += `<div class="${cls}" onclick="clickDay('${s}')" title="${title}">${day}${dot}</div>`;
     }
 
-    html+=`</div></div>`;
+    html += `</div></div>`;
     const card = document.createElement('div');
     card.innerHTML = html;
     grid.appendChild(card.firstChild);
   }
 }
 
-function countMk(type){ return Object.values(getMarked()).filter(v=>v===type).length; }
+// ── Render RDV list ──
+function renderRdvList() {
+  const list = document.getElementById('rdvList');
+  const yearStr = String(currentYear);
+  const items = Object.entries(rdvData)
+    .filter(([s]) => s.startsWith(yearStr))
+    .sort(([a],[b]) => a.localeCompare(b));
 
-function update(){
+  if (!items.length) {
+    list.innerHTML = `<div class="rdv-empty">Aucun RDV pour ${currentYear}</div>`;
+    return;
+  }
+
+  list.innerHTML = items.map(([s, v]) => {
+    const d = new Date(s+'T00:00:00');
+    const dn = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
+    return `<div class="rdv-item" onclick="openModal('${s}')">
+      <span class="rdate">${dn} ${s}</span>
+      <span class="rclient">${v.client || '–'}</span>
+      <span class="rville">${v.ville || ''}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Render fériés ──
+function renderFeries() {
+  const list = document.getElementById('feriesList');
+  list.innerHTML = Object.entries(getFeries()).map(([s,n]) => {
+    const d = new Date(s+'T00:00:00');
+    const dn = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
+    return `<div class="ferie-item"><span class="fdate">${dn} ${s}</span><span class="fname">${n}</span></div>`;
+  }).join('');
+}
+
+// ── KPIs ──
+function countMk(type) { return Object.values(marked).filter(v=>v===type).length; }
+
+function update() {
   const mC=+document.getElementById('maxC').value||0;
   const mR=+document.getElementById('maxR').value||0;
   const mT=+document.getElementById('maxT').value||0;
   const uC=countMk('conge'), uR=countMk('recup'), uT=countMk('tele');
-
   document.getElementById('kC').textContent = mC-uC;
   document.getElementById('kT').textContent = mT-uT;
   document.getElementById('kR').textContent = mR-uR;
@@ -568,50 +800,35 @@ function update(){
   document.getElementById('uR').textContent = `${uR} utilisé${uR>1?'s':''} / ${mR}`;
 }
 
-function renderFeries(){
-  const list = document.getElementById('feriesList');
-  list.innerHTML = Object.entries(getFeries()).map(([s,n])=>{
-    const d=new Date(s+'T00:00:00');
-    const dn=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
-    return `<div class="ferie-item"><span class="fdate">${dn} ${s}</span><span class="fname">${n}</span></div>`;
-  }).join('');
-}
-
-function toast(msg){
-  const el=document.getElementById('toast');
-  el.textContent=msg;
-  el.classList.add('show');
-  setTimeout(()=>el.classList.remove('show'),3000);
-}
-
-function copySheets(){
+// ── Copy to Sheets ──
+function copySheets() {
   const mC=+document.getElementById('maxC').value||0;
   const mR=+document.getElementById('maxR').value||0;
   const mT=+document.getElementById('maxT').value||0;
   const uC=countMk('conge'), uR=countMk('recup'), uT=countMk('tele');
-  const marked = getMarked();
   const feries = getFeries();
 
-  const rows=[];
+  const rows = [];
   rows.push([`CALENDRIER ${currentYear} — LUXEMBOURG 🇱🇺`]);
   rows.push([]);
   rows.push(['Paramètres','Congés max',mC,'Récup max',mR,'Télétravail max',mT]);
   rows.push([]);
-  rows.push(['Date','Jour','Mois','S#','Férié','Marquage','Détail']);
+  rows.push(['Date','Jour','Mois','S#','Férié','Marquage','Client RDV','Ville RDV']);
 
-  for(let m=0;m<12;m++){
-    const dIM=new Date(currentYear,m+1,0).getDate();
-    for(let day=1;day<=dIM;day++){
-      const s=ds(currentYear,m,day);
-      const dt=new Date(currentYear,m,day);
-      const dw=dt.getDay();
-      if(dw===0||dw===6) continue;
-      const dn=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][dw];
-      const fe=feries[s]||'';
-      const mk=marked[s]||'';
-      const label=mk==='conge'?'CONGÉ':mk==='tele'?'TÉLÉTRAVAIL':mk==='recup'?'RÉCUP':'';
-      const detail=fe||label;
-      rows.push([s, dn, MONTHS_FR[m], 'S'+getWeek(dt), fe?'OUI':'', label, detail]);
+  for (let m=0; m<12; m++) {
+    const dIM = new Date(currentYear,m+1,0).getDate();
+    for (let day=1; day<=dIM; day++) {
+      const s  = ds(currentYear,m,day);
+      const dt = new Date(currentYear,m,day);
+      const dw = dt.getDay();
+      if (dw===0||dw===6) continue;
+      const dn = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][dw];
+      const fe = feries[s]||'';
+      const mk = marked[s]||'';
+      const label = mk==='conge'?'CONGÉ':mk==='tele'?'TÉLÉTRAVAIL':mk==='recup'?'RÉCUP':'';
+      const rdv = rdvData[s];
+      rows.push([s, dn, MONTHS_FR[m], 'S'+getWeek(dt), fe?'OUI':'', label,
+                 rdv ? rdv.client : '', rdv ? rdv.ville : '']);
     }
   }
 
@@ -623,22 +840,42 @@ function copySheets(){
   rows.push(['Télétravail',uT,mT,mT-uT]);
   rows.push([]);
   rows.push([`JOURS FÉRIÉS ${currentYear}`]);
-  Object.entries(feries).forEach(([s,n])=>rows.push([s,n]));
+  Object.entries(feries).forEach(([s,n]) => rows.push([s,n]));
 
-  const tsv=rows.map(r=>r.join('\t')).join('\n');
-  navigator.clipboard.writeText(tsv).then(()=>{
+  const tsv = rows.map(r=>r.join('\t')).join('\n');
+  navigator.clipboard.writeText(tsv).then(() => {
     toast('✅ Copié ! Collez dans Google Sheets (Ctrl+V)');
-  }).catch(()=>{
-    const ta=document.createElement('textarea');
-    ta.value=tsv; document.body.appendChild(ta);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = tsv; document.body.appendChild(ta);
     ta.select(); document.execCommand('copy');
     document.body.removeChild(ta);
     toast('✅ Copié ! Collez dans Google Sheets (Ctrl+V)');
   });
 }
 
-// Init
+// ── Toast ──
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', e => {
+  if (document.getElementById('modal-overlay').classList.contains('open')) return;
+  if (e.key==='c'||e.key==='C') setMode('conge');
+  if (e.key==='t'||e.key==='T') setMode('tele');
+  if (e.key==='r'||e.key==='R') setMode('recup');
+  if (e.key==='v'||e.key==='V') setMode('rdv');
+  if (e.key==='x'||e.key==='X') setMode('reset');
+  if (e.key==='Escape') setMode('conge');
+});
+
+// ── Init ──
 renderCal();
+renderRdvList();
 renderFeries();
 update();
 </script>
