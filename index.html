@@ -164,7 +164,8 @@
   .mode-btn.active-t { border-color: var(--purple); color: var(--purple); background: var(--purple-bg); }
   .mode-btn.active-r { border-color: var(--amber);  color: var(--amber);  background: var(--amber-bg); }
   .mode-btn.active-x { border-color: var(--red);    color: var(--red);    background: var(--red-bg); }
-  .mode-btn.active-rdv { border-color: var(--accent); color: var(--accent); background: var(--blue-bg); }
+  .mode-btn.active-rdv     { border-color: var(--accent); color: var(--accent); background: var(--blue-bg); }
+  .mode-btn.active-valider { border-color: #22d3ee; color: #22d3ee; background: #061f26; }
 
   .copy-btn {
     margin-left: auto;
@@ -231,6 +232,26 @@
   .d.workday { cursor: pointer; }
   .d.workday:hover { background: var(--surface2); color: var(--accent2); }
   .d.conge:hover, .d.tele:hover, .d.recup:hover, .d.has-rdv:hover { opacity: 0.8; }
+
+  /* ── Comment dot ── */
+  .d.has-comment::after {
+    content: '';
+    position: absolute;
+    bottom: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.6;
+  }
+
+  /* ── Validated ── */
+  .d.validated              { outline: 1.5px solid; outline-offset: -1.5px; }
+  .d.conge.validated        { outline-color: var(--green); }
+  .d.tele.validated         { outline-color: var(--purple); }
+  .d.recup.validated        { outline-color: var(--amber); }
+  .d.has-rdv.validated      { outline-color: var(--accent); }
 
   /* ── Legend ── */
   .legend { display: flex; gap: 14px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
@@ -433,7 +454,8 @@
   <button class="mode-btn"          id="btn-tele"  onclick="setMode('tele')">💻 Télétravail</button>
   <button class="mode-btn"          id="btn-recup" onclick="setMode('recup')">🔄 Récup</button>
   <button class="mode-btn"          id="btn-rdv"   onclick="setMode('rdv')">📍 RDV</button>
-  <button class="mode-btn"          id="btn-reset" onclick="setMode('reset')">🗑 Effacer</button>
+  <button class="mode-btn"          id="btn-reset"   onclick="setMode('reset')">🗑 Effacer</button>
+  <button class="mode-btn"          id="btn-valider" onclick="setMode('valider')">✅ Valider</button>
   <button class="copy-btn"                         onclick="copySheets()">📋 Copier pour Sheets</button>
 </div>
 <div class="hint" id="hint">← Cliquez sur un jour ouvrable pour le marquer · Cliquez à nouveau pour retirer la marque</div>
@@ -461,14 +483,14 @@
 <!-- RDV Modal -->
 <div id="modal-overlay" onclick="overlayClick(event)">
   <div class="modal">
-    <h2>📍 Rendez-vous</h2>
+    <h2 id="modal-title">📍 Rendez-vous</h2>
     <div class="modal-date" id="modal-date"></div>
     <div class="modal-field">
-      <label>Client</label>
+      <label id="modal-label1">Client</label>
       <input type="text" id="rdv-client" placeholder="Nom du client…" onkeydown="modalKey(event)">
     </div>
     <div class="modal-field">
-      <label>Ville</label>
+      <label id="modal-label2">Ville</label>
       <input type="text" id="rdv-ville" placeholder="Ville…" onkeydown="modalKey(event)">
     </div>
     <div class="modal-actions">
@@ -542,9 +564,12 @@ const DOW = ['L','M','M','J','V','S','D'];
 // State
 let marked = {};          // 'YYYY-MM-DD' → 'conge'|'tele'|'recup'
 let rdvData = {};         // 'YYYY-MM-DD' → { client, ville }
+let validated = {};       // 'YYYY-MM-DD' → true
+let comments = {};        // 'YYYY-MM-DD' → { objet, lieu }
 let currentYear = 2026;
 let mode = 'conge';
 let modalDate = null;
+let modalMode = 'rdv';    // 'rdv' | 'comment'
 
 const todayStr = new Date().toISOString().slice(0,10);
 
@@ -559,8 +584,10 @@ try {
   });
   db.ref('/').on('value', snap => {
     const data = snap.val() || {};
-    marked  = data.marked  || {};
-    rdvData = data.rdv     || {};
+    marked    = data.marked    || {};
+    rdvData   = data.rdv       || {};
+    validated = data.validated || {};
+    comments  = data.comments  || {};
     renderCal();
     renderRdvList();
     update();
@@ -608,8 +635,8 @@ function changeYear(y) {
 // ── Mode ──
 function setMode(m) {
   mode = m;
-  const map = { conge:'active-c', tele:'active-t', recup:'active-r', rdv:'active-rdv', reset:'active-x' };
-  ['conge','tele','recup','rdv','reset'].forEach(k => {
+  const map = { conge:'active-c', tele:'active-t', recup:'active-r', rdv:'active-rdv', reset:'active-x', valider:'active-valider' };
+  ['conge','tele','recup','rdv','reset','valider'].forEach(k => {
     const btn = document.getElementById('btn-'+k);
     if (btn) btn.className = 'mode-btn' + (k===m ? ' '+map[k] : '');
   });
@@ -619,6 +646,7 @@ function setMode(m) {
     recup:  '← Cliquez sur un jour ouvrable pour marquer une récup',
     rdv:    '← Cliquez sur n\'importe quel jour pour ajouter/modifier un RDV',
     reset:  '← Cliquez sur un jour pour effacer son marquage',
+    valider:'← Cliquez sur un jour marqué pour indiquer qu\'il est validé · Cliquez à nouveau pour retirer la validation',
   };
   document.getElementById('hint').textContent = hints[m] || '';
 }
@@ -631,10 +659,18 @@ function clickDay(s) {
   }
   const [y,mo,d] = s.split('-').map(Number);
   if (!isWorkday(y,mo-1,d)) return;
+  if (mode === 'valider') {
+    if (!marked[s] && !rdvData[s]) return;
+    if (validated[s]) dbRemove('validated/'+s);
+    else dbSet('validated/'+s, true);
+    return;
+  }
   if (mode === 'reset') {
     dbRemove('marked/'+s);
+    dbRemove('validated/'+s);
+    dbRemove('comments/'+s);
   } else {
-    if (marked[s] === mode) dbRemove('marked/'+s);
+    if (marked[s] === mode) openCommentModal(s);
     else dbSet('marked/'+s, mode);
   }
 }
@@ -642,10 +678,36 @@ function clickDay(s) {
 // ── RDV Modal ──
 function openModal(s) {
   modalDate = s;
+  modalMode = 'rdv';
   const existing = rdvData[s];
+  document.getElementById('modal-title').textContent = '📍 Rendez-vous';
+  document.getElementById('modal-label1').textContent = 'Client';
+  document.getElementById('modal-label2').textContent = 'Ville';
+  document.getElementById('rdv-client').placeholder = 'Nom du client…';
+  document.getElementById('rdv-ville').placeholder  = 'Ville…';
   document.getElementById('modal-date').textContent = fmtDate(s);
   document.getElementById('rdv-client').value = existing ? existing.client : '';
   document.getElementById('rdv-ville').value  = existing ? existing.ville  : '';
+  document.getElementById('btn-del-rdv').style.display = existing ? 'block' : 'none';
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('rdv-client').focus(), 50);
+}
+
+// ── Comment Modal ──
+function openCommentModal(s) {
+  modalDate = s;
+  modalMode = 'comment';
+  const type = marked[s];
+  const icons = { conge: '☀️', tele: '💻', recup: '🔄' };
+  const existing = comments[s];
+  document.getElementById('modal-title').textContent = `${icons[type] || '✏️'} Note`;
+  document.getElementById('modal-label1').textContent = 'Objet';
+  document.getElementById('modal-label2').textContent = 'Lieu';
+  document.getElementById('rdv-client').placeholder = 'Vacances famille, formation…';
+  document.getElementById('rdv-ville').placeholder  = 'Paris, domicile…';
+  document.getElementById('modal-date').textContent = fmtDate(s);
+  document.getElementById('rdv-client').value = existing ? (existing.objet || '') : '';
+  document.getElementById('rdv-ville').value  = existing ? (existing.lieu  || '') : '';
   document.getElementById('btn-del-rdv').style.display = existing ? 'block' : 'none';
   document.getElementById('modal-overlay').classList.add('open');
   setTimeout(() => document.getElementById('rdv-client').focus(), 50);
@@ -666,6 +728,7 @@ function modalKey(e) {
 }
 
 function saveRdv() {
+  if (modalMode === 'comment') { saveComment(); return; }
   const client = document.getElementById('rdv-client').value.trim();
   const ville  = document.getElementById('rdv-ville').value.trim();
   if (!client && !ville) { deleteRdv(); return; }
@@ -675,8 +738,24 @@ function saveRdv() {
 }
 
 function deleteRdv() {
+  if (modalMode === 'comment') { deleteComment(); return; }
   if (!modalDate) return;
   dbRemove('rdv/'+modalDate);
+  closeModal();
+}
+
+function saveComment() {
+  const objet = document.getElementById('rdv-client').value.trim();
+  const lieu  = document.getElementById('rdv-ville').value.trim();
+  if (!objet && !lieu) { deleteComment(); return; }
+  dbSet('comments/'+modalDate, { objet, lieu });
+  closeModal();
+  toast('✏️ Note enregistrée');
+}
+
+function deleteComment() {
+  if (!modalDate) return;
+  dbRemove('comments/'+modalDate);
   closeModal();
 }
 
@@ -712,6 +791,8 @@ function renderCal() {
       const fe  = isFerie(s);
       const mk  = marked[s];
       const hasRdv = !!rdvData[s];
+      const isValidated = !!validated[s];
+      const hasComment = !!comments[s];
       const isTd = s===todayStr;
 
       let cls = 'd';
@@ -723,11 +804,14 @@ function renderCal() {
       else if (hasRdv)       cls += ' has-rdv workday';
       else                   cls += ' workday';
       if (hasRdv && mk)      cls += ' has-rdv';
+      if (isValidated)       cls += ' validated';
+      if (hasComment)        cls += ' has-comment';
       if (isTd) cls += ' today';
 
       const rdvInfo = hasRdv ? `${rdvData[s].client}${rdvData[s].ville ? ' — '+rdvData[s].ville : ''}` : '';
       const ferieInfo = fe ? feries[s] : '';
-      const titleParts = [ferieInfo, mk ? mk.toUpperCase() : '', rdvInfo].filter(Boolean);
+      const commentInfo = hasComment ? `${comments[s].objet || ''}${comments[s].objet && comments[s].lieu ? ' — ' : ''}${comments[s].lieu || ''}` : '';
+      const titleParts = [ferieInfo, mk ? mk.toUpperCase() : '', rdvInfo, commentInfo, isValidated ? '✅ VALIDÉ' : ''].filter(Boolean);
       const title = titleParts.join(' · ');
 
       html += `<div class="${cls}" onclick="clickDay('${s}')" title="${title}">${day}</div>`;
@@ -803,7 +887,7 @@ function copySheets() {
   rows.push([]);
   rows.push(['Paramètres','Congés max',mC,'Récup max',mR,'Télétravail max',mT]);
   rows.push([]);
-  rows.push(['Date','Jour','Mois','S#','Férié','Marquage','Client RDV','Ville RDV']);
+  rows.push(['Date','Jour','Mois','S#','Férié','Marquage','Objet Note','Lieu Note','Client RDV','Ville RDV']);
 
   for (let m=0; m<12; m++) {
     const dIM = new Date(currentYear,m+1,0).getDate();
@@ -817,7 +901,9 @@ function copySheets() {
       const mk = marked[s]||'';
       const label = mk==='conge'?'CONGÉ':mk==='tele'?'TÉLÉTRAVAIL':mk==='recup'?'RÉCUP':'';
       const rdv = rdvData[s];
+      const cmt = comments[s];
       rows.push([s, dn, MONTHS_FR[m], 'S'+getWeek(dt), fe?'OUI':'', label,
+                 cmt ? (cmt.objet||'') : '', cmt ? (cmt.lieu||'') : '',
                  rdv ? rdv.client : '', rdv ? rdv.ville : '']);
     }
   }
@@ -860,6 +946,7 @@ document.addEventListener('keydown', e => {
   if (e.key==='r'||e.key==='R') setMode('recup');
   if (e.key==='v'||e.key==='V') setMode('rdv');
   if (e.key==='x'||e.key==='X') setMode('reset');
+  if (e.key==='a'||e.key==='A') setMode('valider');
   if (e.key==='Escape') setMode('conge');
 });
 
