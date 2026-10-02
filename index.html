@@ -30,6 +30,7 @@
     --red: #f87171;
     --red-bg: #2c0f0f;
     --blue-bg: #0d1e3a;
+    --pink: #f472b6;
     --mono: 'DM Mono', monospace;
     --sans: 'Syne', sans-serif;
   }
@@ -165,6 +166,7 @@
   .mode-btn.active-r { border-color: var(--amber);  color: var(--amber);  background: var(--amber-bg); }
   .mode-btn.active-x { border-color: var(--red);    color: var(--red);    background: var(--red-bg); }
   .mode-btn.active-rdv     { border-color: var(--accent); color: var(--accent); background: var(--blue-bg); }
+  .mode-btn.active-bday    { border-color: var(--pink); color: var(--pink); background: #2a1020; }
   .mode-btn.active-valider { border-color: #22d3ee; color: #22d3ee; background: #061f26; }
 
   .copy-btn {
@@ -229,6 +231,10 @@
   .d.recup  { background: var(--amber-bg);  color: var(--amber);  font-weight: 500; }
   .d.has-rdv { background: var(--blue-bg);  color: var(--accent); font-weight: 500; }
   .d.today  { box-shadow: 0 0 0 1px var(--accent2) inset; }
+
+  /* ── Anniversaire : contour extérieur ── */
+  .d.birthday { box-shadow: 0 0 0 1.5px var(--pink); }
+  .d.birthday.today { box-shadow: 0 0 0 1.5px var(--pink), 0 0 0 1px var(--accent2) inset; }
   .d.workday { cursor: pointer; }
   .d.workday:hover { background: var(--surface2); color: var(--accent2); }
   .d.conge:hover, .d.tele:hover, .d.recup:hover, .d.has-rdv:hover { opacity: 0.8; }
@@ -261,6 +267,7 @@
   .ldot.c  { background: var(--green-bg);  border: 1px solid var(--green); }
   .ldot.t  { background: var(--purple-bg); border: 1px solid var(--purple); }
   .ldot.r  { background: var(--amber-bg);  border: 1px solid var(--amber); }
+  .ldot.bday { border: 1.5px solid var(--pink); }
   .ldot.rdv { background: var(--blue-bg); border: 1px solid var(--accent); border-radius: 50%; }
 
   /* ── Sections (RDV list + Fériés) ── */
@@ -454,6 +461,7 @@
   <button class="mode-btn"          id="btn-tele"  onclick="setMode('tele')">💻 Télétravail</button>
   <button class="mode-btn"          id="btn-recup" onclick="setMode('recup')">🔄 Récup</button>
   <button class="mode-btn"          id="btn-rdv"   onclick="setMode('rdv')">📍 RDV</button>
+  <button class="mode-btn"          id="btn-bday"  onclick="setMode('bday')">🎂 Anniversaires</button>
   <button class="mode-btn"          id="btn-reset"   onclick="setMode('reset')">🗑 Effacer</button>
   <button class="mode-btn"          id="btn-valider" onclick="setMode('valider')">✅ Valider</button>
   <button class="copy-btn"                         onclick="copySheets()">📋 Copier pour Sheets</button>
@@ -468,11 +476,17 @@
   <div class="leg"><div class="ldot t"></div>Télétravail</div>
   <div class="leg"><div class="ldot r"></div>Récup</div>
   <div class="leg"><div class="ldot rdv"></div>RDV</div>
+  <div class="leg"><div class="ldot bday"></div>Anniversaire</div>
 </div>
 
 <div class="section" id="rdvSection">
   <h3>📍 Rendez-vous <span id="rdvYearLabel">2026</span></h3>
   <div class="rdv-list" id="rdvList"></div>
+</div>
+
+<div class="section" id="bdaySection">
+  <h3>🎂 Anniversaires</h3>
+  <div class="rdv-list" id="bdayList"></div>
 </div>
 
 <div class="section">
@@ -489,7 +503,7 @@
       <label id="modal-label1">Client</label>
       <input type="text" id="rdv-client" placeholder="Nom du client…" onkeydown="modalKey(event)">
     </div>
-    <div class="modal-field">
+    <div class="modal-field" id="modal-field2">
       <label id="modal-label2">Ville</label>
       <input type="text" id="rdv-ville" placeholder="Ville…" onkeydown="modalKey(event)">
     </div>
@@ -523,6 +537,7 @@ const FERIES_BY_YEAR = {
     '2026-01-01': "Jour de l'An",
     '2026-04-06': 'Lundi de Pâques',
     '2026-05-01': 'Fête du Travail',
+    '2026-05-09': "Journée de l'Europe",
     '2026-05-14': 'Ascension',
     '2026-05-25': 'Lundi de Pentecôte',
     '2026-06-23': 'Fête Nationale',
@@ -536,6 +551,7 @@ const FERIES_BY_YEAR = {
     '2027-03-29': 'Lundi de Pâques',
     '2027-05-01': 'Fête du Travail',
     '2027-05-06': 'Ascension',
+    '2027-05-09': "Journée de l'Europe",
     '2027-05-17': 'Lundi de Pentecôte',
     '2027-06-23': 'Fête Nationale',
     '2027-08-15': 'Assomption',
@@ -547,6 +563,7 @@ const FERIES_BY_YEAR = {
     '2028-01-01': "Jour de l'An",
     '2028-04-17': 'Lundi de Pâques',
     '2028-05-01': 'Fête du Travail',
+    '2028-05-09': "Journée de l'Europe",
     '2028-05-25': 'Ascension',
     '2028-06-05': 'Lundi de Pentecôte',
     '2028-06-23': 'Fête Nationale',
@@ -566,10 +583,11 @@ let marked = {};          // 'YYYY-MM-DD' → 'conge'|'tele'|'recup'
 let rdvData = {};         // 'YYYY-MM-DD' → { client, ville }
 let validated = {};       // 'YYYY-MM-DD' → true
 let comments = {};        // 'YYYY-MM-DD' → { objet, lieu }
+let birthdays = {};       // 'MM-DD' → { nom } (récurrent chaque année)
 let currentYear = 2026;
 let mode = 'conge';
 let modalDate = null;
-let modalMode = 'rdv';    // 'rdv' | 'comment'
+let modalMode = 'rdv';    // 'rdv' | 'comment' | 'bday'
 
 const todayStr = new Date().toISOString().slice(0,10);
 
@@ -588,8 +606,10 @@ try {
     rdvData   = data.rdv       || {};
     validated = data.validated || {};
     comments  = data.comments  || {};
+    birthdays = data.birthdays || {};
     renderCal();
     renderRdvList();
+    renderBdayList();
     update();
   });
 } catch(e) {
@@ -635,8 +655,8 @@ function changeYear(y) {
 // ── Mode ──
 function setMode(m) {
   mode = m;
-  const map = { conge:'active-c', tele:'active-t', recup:'active-r', rdv:'active-rdv', reset:'active-x', valider:'active-valider' };
-  ['conge','tele','recup','rdv','reset','valider'].forEach(k => {
+  const map = { conge:'active-c', tele:'active-t', recup:'active-r', rdv:'active-rdv', reset:'active-x', valider:'active-valider', bday:'active-bday' };
+  ['conge','tele','recup','rdv','bday','reset','valider'].forEach(k => {
     const btn = document.getElementById('btn-'+k);
     if (btn) btn.className = 'mode-btn' + (k===m ? ' '+map[k] : '');
   });
@@ -645,6 +665,7 @@ function setMode(m) {
     tele:   '← Cliquez sur un jour ouvrable pour marquer du télétravail',
     recup:  '← Cliquez sur un jour ouvrable pour marquer une récup',
     rdv:    '← Cliquez sur n\'importe quel jour pour ajouter/modifier un RDV',
+    bday:   '← Cliquez sur un jour (quel qu\'il soit) pour ajouter/modifier un anniversaire · récurrent chaque année',
     reset:  '← Cliquez sur un jour pour effacer son marquage',
     valider:'← Cliquez sur un jour marqué pour indiquer qu\'il est validé · Cliquez à nouveau pour retirer la validation',
   };
@@ -655,6 +676,10 @@ function setMode(m) {
 function clickDay(s) {
   if (mode === 'rdv') {
     openModal(s);
+    return;
+  }
+  if (mode === 'bday') {
+    openBdayModal(s);
     return;
   }
   const [y,mo,d] = s.split('-').map(Number);
@@ -681,6 +706,7 @@ function openModal(s) {
   modalMode = 'rdv';
   const existing = rdvData[s];
   document.getElementById('modal-title').textContent = '📍 Rendez-vous';
+  document.getElementById('modal-field2').style.display = '';
   document.getElementById('modal-label1').textContent = 'Client';
   document.getElementById('modal-label2').textContent = 'Ville';
   document.getElementById('rdv-client').placeholder = 'Nom du client…';
@@ -693,6 +719,38 @@ function openModal(s) {
   setTimeout(() => document.getElementById('rdv-client').focus(), 50);
 }
 
+// ── Birthday Modal ──
+function bdayKey(s) { return s.slice(5); }
+
+function openBdayModal(s) {
+  modalDate = s;
+  modalMode = 'bday';
+  const existing = birthdays[bdayKey(s)];
+  document.getElementById('modal-title').textContent = '🎂 Anniversaire';
+  document.getElementById('modal-label1').textContent = 'Nom';
+  document.getElementById('rdv-client').placeholder = 'Prénom Nom…';
+  document.getElementById('modal-field2').style.display = 'none';
+  document.getElementById('modal-date').textContent = `${s.slice(8)} ${MONTHS_FR[+s.slice(5,7)-1]} (chaque année)`;
+  document.getElementById('rdv-client').value = existing ? existing.nom : '';
+  document.getElementById('btn-del-rdv').style.display = existing ? 'block' : 'none';
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('rdv-client').focus(), 50);
+}
+
+function saveBday() {
+  const nom = document.getElementById('rdv-client').value.trim();
+  if (!nom) { deleteBday(); return; }
+  dbSet('birthdays/'+bdayKey(modalDate), { nom });
+  closeModal();
+  toast('🎂 Anniversaire enregistré');
+}
+
+function deleteBday() {
+  if (!modalDate) return;
+  dbRemove('birthdays/'+bdayKey(modalDate));
+  closeModal();
+}
+
 // ── Comment Modal ──
 function openCommentModal(s) {
   modalDate = s;
@@ -701,6 +759,7 @@ function openCommentModal(s) {
   const icons = { conge: '☀️', tele: '💻', recup: '🔄' };
   const existing = comments[s];
   document.getElementById('modal-title').textContent = `${icons[type] || '✏️'} Note`;
+  document.getElementById('modal-field2').style.display = '';
   document.getElementById('modal-label1').textContent = 'Objet';
   document.getElementById('modal-label2').textContent = 'Lieu';
   document.getElementById('rdv-client').placeholder = 'Vacances famille, formation…';
@@ -728,6 +787,7 @@ function modalKey(e) {
 }
 
 function saveRdv() {
+  if (modalMode === 'bday') { saveBday(); return; }
   if (modalMode === 'comment') { saveComment(); return; }
   const client = document.getElementById('rdv-client').value.trim();
   const ville  = document.getElementById('rdv-ville').value.trim();
@@ -738,6 +798,7 @@ function saveRdv() {
 }
 
 function deleteRdv() {
+  if (modalMode === 'bday') { deleteBday(); return; }
   if (modalMode === 'comment') { deleteComment(); return; }
   if (!modalDate) return;
   dbRemove('rdv/'+modalDate);
@@ -793,6 +854,7 @@ function renderCal() {
       const hasRdv = !!rdvData[s];
       const isValidated = !!validated[s];
       const hasComment = !!comments[s];
+      const bday = birthdays[bdayKey(s)];
       const isTd = s===todayStr;
 
       let cls = 'd';
@@ -806,12 +868,13 @@ function renderCal() {
       if (hasRdv && mk)      cls += ' has-rdv';
       if (isValidated)       cls += ' validated';
       if (hasComment)        cls += ' has-comment';
+      if (bday)              cls += ' birthday';
       if (isTd) cls += ' today';
 
       const rdvInfo = hasRdv ? `${rdvData[s].client}${rdvData[s].ville ? ' — '+rdvData[s].ville : ''}` : '';
       const ferieInfo = fe ? feries[s] : '';
       const commentInfo = hasComment ? `${comments[s].objet || ''}${comments[s].objet && comments[s].lieu ? ' — ' : ''}${comments[s].lieu || ''}` : '';
-      const titleParts = [ferieInfo, mk ? mk.toUpperCase() : '', rdvInfo, commentInfo, isValidated ? '✅ VALIDÉ' : ''].filter(Boolean);
+      const titleParts = [ferieInfo, bday ? '🎂 '+bday.nom : '', mk ? mk.toUpperCase() : '', rdvInfo, commentInfo, isValidated ? '✅ VALIDÉ' : ''].filter(Boolean);
       const title = titleParts.join(' · ');
 
       html += `<div class="${cls}" onclick="clickDay('${s}')" title="${title}">${day}</div>`;
@@ -848,6 +911,20 @@ function renderRdvList() {
   }).join('');
 }
 
+// ── Render anniversaires ──
+function renderBdayList() {
+  const list = document.getElementById('bdayList');
+  const items = Object.entries(birthdays).sort(([a],[b]) => a.localeCompare(b));
+  if (!items.length) {
+    list.innerHTML = `<div class="rdv-empty">Aucun anniversaire</div>`;
+    return;
+  }
+  list.innerHTML = items.map(([k, v]) => `<div class="rdv-item" onclick="openBdayModal('${currentYear}-${k}')">
+      <span class="rdate">${k.slice(3)} ${MONTHS_FR[+k.slice(0,2)-1]}</span>
+      <span class="rclient">${v.nom}</span>
+    </div>`).join('');
+}
+
 // ── Render fériés ──
 function renderFeries() {
   const list = document.getElementById('feriesList');
@@ -859,7 +936,13 @@ function renderFeries() {
 }
 
 // ── KPIs ──
-function countMk(type) { return Object.values(marked).filter(v=>v===type).length; }
+function countMk(type) {
+  return Object.entries(marked).filter(([s,v]) => {
+    if (v !== type) return false;
+    const [y,mo,d] = s.split('-').map(Number);
+    return y === currentYear && isWorkday(y,mo-1,d);
+  }).length;
+}
 
 function update() {
   const mC=+document.getElementById('maxC').value||0;
@@ -887,7 +970,7 @@ function copySheets() {
   rows.push([]);
   rows.push(['Paramètres','Congés max',mC,'Récup max',mR,'Télétravail max',mT]);
   rows.push([]);
-  rows.push(['Date','Jour','Mois','S#','Férié','Marquage','Objet Note','Lieu Note','Client RDV','Ville RDV']);
+  rows.push(['Date','Jour','Mois','S#','Férié','Marquage','Objet Note','Lieu Note','Client RDV','Ville RDV','Anniversaire']);
 
   for (let m=0; m<12; m++) {
     const dIM = new Date(currentYear,m+1,0).getDate();
@@ -904,7 +987,8 @@ function copySheets() {
       const cmt = comments[s];
       rows.push([s, dn, MONTHS_FR[m], 'S'+getWeek(dt), fe?'OUI':'', label,
                  cmt ? (cmt.objet||'') : '', cmt ? (cmt.lieu||'') : '',
-                 rdv ? rdv.client : '', rdv ? rdv.ville : '']);
+                 rdv ? rdv.client : '', rdv ? rdv.ville : '',
+                 birthdays[bdayKey(s)] ? birthdays[bdayKey(s)].nom : '']);
     }
   }
 
@@ -945,6 +1029,7 @@ document.addEventListener('keydown', e => {
   if (e.key==='t'||e.key==='T') setMode('tele');
   if (e.key==='r'||e.key==='R') setMode('recup');
   if (e.key==='v'||e.key==='V') setMode('rdv');
+  if (e.key==='b'||e.key==='B') setMode('bday');
   if (e.key==='x'||e.key==='X') setMode('reset');
   if (e.key==='a'||e.key==='A') setMode('valider');
   if (e.key==='Escape') setMode('conge');
@@ -953,6 +1038,7 @@ document.addEventListener('keydown', e => {
 // ── Init ──
 renderCal();
 renderRdvList();
+renderBdayList();
 renderFeries();
 update();
 </script>

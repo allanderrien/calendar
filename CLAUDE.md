@@ -20,12 +20,14 @@ Repo : https://github.com/allanderrien/calendar
 - Structure des données :
   - `/marked/YYYY-MM-DD` → `"conge"` | `"tele"` | `"recup"`
   - `/rdv/YYYY-MM-DD` → `{ client: "...", ville: "..." }`
+  - `/birthdays/MM-DD` → `{ nom: "..." }` (récurrent chaque année)
 
 ## Fonctionnalités
 - Sélecteur d'année : 2026 / 2027 / 2028
-- Modes : ☀️ Congé · 💻 Télétravail · 🔄 Récup · 📍 RDV · 🗑 Effacer
-- Raccourcis clavier : C / T / R / V / X
-- KPI dashboard (jours restants par catégorie)
+- Modes : ☀️ Congé · 💻 Télétravail · 🔄 Récup · 📍 RDV · 🎂 Anniversaires · 🗑 Effacer
+- Raccourcis clavier : C / T / R / V / B / X
+- Anniversaires : contour rose extérieur sur le jour, liste dédiée, colonne dans l'export
+- KPI dashboard (jours restants par catégorie, année affichée, jours ouvrés uniquement)
 - Liste des RDV triée par date
 - Export TSV pour Google Sheets
 - Sync temps réel (dot vert = connecté)
@@ -37,6 +39,7 @@ Repo : https://github.com/allanderrien/calendar
 
 ## Jours fériés luxembourgeois
 Calculés pour 2026 (Pâques 5 avril), 2027 (Pâques 28 mars), 2028 (Pâques 16 avril).
+Inclut la Journée de l'Europe (9 mai), férié légal depuis 2019.
 
 ## Git
 - Branche principale : `main`
