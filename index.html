@@ -425,15 +425,15 @@
     </div>
     <div class="param">
       <label>☀️ Congés</label>
-      <input type="number" id="maxC" value="32" min="0" max="60" oninput="update()">
+      <input type="number" id="maxC" value="32" min="0" max="60" oninput="onQuotaInput()">
     </div>
     <div class="param">
       <label>🔄 Récup max</label>
-      <input type="number" id="maxR" value="14" min="0" max="40" oninput="update()">
+      <input type="number" id="maxR" value="14" min="0" max="40" oninput="onQuotaInput()">
     </div>
     <div class="param">
       <label>💻 Télétravail max</label>
-      <input type="number" id="maxT" value="34" min="0" max="260" oninput="update()">
+      <input type="number" id="maxT" value="34" min="0" max="260" oninput="onQuotaInput()">
     </div>
   </div>
 </header>
@@ -583,6 +583,7 @@ let marked = {};          // 'YYYY-MM-DD' → 'conge'|'tele'|'recup'
 let rdvData = {};         // 'YYYY-MM-DD' → { client, ville }
 let validated = {};       // 'YYYY-MM-DD' → true
 let comments = {};        // 'YYYY-MM-DD' → { objet, lieu }
+let quotas = {};          // 'YYYY' → { conge, recup, tele } (plafonds annuels)
 let birthdays = {};       // 'MM-DD' → { nom } (récurrent chaque année)
 let currentYear = 2026;
 let mode = 'conge';
@@ -607,6 +608,8 @@ try {
     validated = data.validated || {};
     comments  = data.comments  || {};
     birthdays = data.birthdays || {};
+    quotas    = data.quotas    || {};
+    fillQuotaInputs();
     renderCal();
     renderRdvList();
     renderBdayList();
@@ -646,6 +649,7 @@ function changeYear(y) {
   document.getElementById('yearLabel').textContent = currentYear;
   document.getElementById('rdvYearLabel').textContent = currentYear;
   document.getElementById('feriesTitle').textContent = `Jours fériés luxembourgeois ${currentYear}`;
+  fillQuotaInputs();
   renderCal();
   renderRdvList();
   renderFeries();
@@ -935,6 +939,29 @@ function renderFeries() {
   }).join('');
 }
 
+// ── Plafonds annuels ──
+const DEFAULT_QUOTAS = { conge: 32, recup: 14, tele: 34 };
+
+function getQuota(year) { return { ...DEFAULT_QUOTAS, ...(quotas[year] || {}) }; }
+
+function fillQuotaInputs() {
+  const q = getQuota(currentYear);
+  const set = (id, v) => { const el = document.getElementById(id); if (document.activeElement !== el) el.value = v; };
+  set('maxC', q.conge); set('maxR', q.recup); set('maxT', q.tele);
+}
+
+function readQuotas() {
+  const n = id => +document.getElementById(id).value || 0;
+  return { mC: n('maxC'), mR: n('maxR'), mT: n('maxT') };
+}
+
+function onQuotaInput() {
+  const {mC,mR,mT} = readQuotas();
+  dbSet('quotas/'+currentYear, { conge: mC, recup: mR, tele: mT });
+  quotas[currentYear] = { conge: mC, recup: mR, tele: mT };
+  update();
+}
+
 // ── KPIs ──
 function countMk(type) {
   return Object.entries(marked).filter(([s,v]) => {
@@ -945,9 +972,7 @@ function countMk(type) {
 }
 
 function update() {
-  const mC=+document.getElementById('maxC').value||0;
-  const mR=+document.getElementById('maxR').value||0;
-  const mT=+document.getElementById('maxT').value||0;
+  const {mC,mR,mT} = readQuotas();
   const uC=countMk('conge'), uR=countMk('recup'), uT=countMk('tele');
   document.getElementById('kC').textContent = mC-uC;
   document.getElementById('kT').textContent = mT-uT;
@@ -959,9 +984,7 @@ function update() {
 
 // ── Copy to Sheets ──
 function copySheets() {
-  const mC=+document.getElementById('maxC').value||0;
-  const mR=+document.getElementById('maxR').value||0;
-  const mT=+document.getElementById('maxT').value||0;
+  const {mC,mR,mT} = readQuotas();
   const uC=countMk('conge'), uR=countMk('recup'), uT=countMk('tele');
   const feries = getFeries();
 
@@ -1036,6 +1059,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Init ──
+fillQuotaInputs();
 renderCal();
 renderRdvList();
 renderBdayList();

@@ -20,6 +20,7 @@ Repo : https://github.com/allanderrien/calendar
 - Structure des données :
   - `/marked/YYYY-MM-DD` → `"conge"` | `"tele"` | `"recup"`
   - `/rdv/YYYY-MM-DD` → `{ client: "...", ville: "..." }`
+  - `/quotas/YYYY` → `{ conge, recup, tele }` (plafonds propres à chaque année)
   - `/birthdays/MM-DD` → `{ nom: "..." }` (récurrent chaque année)
 
 ## Fonctionnalités
@@ -32,7 +33,7 @@ Repo : https://github.com/allanderrien/calendar
 - Export TSV pour Google Sheets
 - Sync temps réel (dot vert = connecté)
 
-## Valeurs par défaut
+## Valeurs par défaut (modifiables année par année, enregistrées dans Firebase)
 - Congés : 32 jours
 - Télétravail : 34 jours
 - Récup : 14 jours
