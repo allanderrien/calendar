@@ -20,7 +20,7 @@ Repo : https://github.com/allanderrien/calendar
 - Structure des données :
   - `/marked/YYYY-MM-DD` → `"conge"` | `"tele"` | `"recup"`
   - `/rdv/YYYY-MM-DD` → `{ client: "...", ville: "..." }`
-  - `/quotas/YYYY` → `{ conge, recup, tele }` (plafonds propres à chaque année)
+  - `/quotas/YYYY` → `{ conge, recup, tele, report }` (plafonds propres à chaque année ; `report` saisi uniquement pour 2026)
   - `/birthdays/MM-DD` → `{ nom: "..." }` (récurrent chaque année)
 
 ## Fonctionnalités
@@ -32,6 +32,11 @@ Repo : https://github.com/allanderrien/calendar
 - Liste des RDV triée par date
 - Export TSV pour Google Sheets
 - Sync temps réel (dot vert = connecté)
+
+## Report de congés
+- Report de l'année n-1 = restants de n-1 (plafond + report conservé − posés), plafonné à 10 jours.
+- Les jours reportés sont à poser avant le 1er mai ; non posés à cette date (comparée à la date du jour), ils sont déduits de la réserve.
+- Affichage : « X utilisés / plafond + Y reportés ». 2026 n'a pas d'année n-1 : le report se saisit à la main.
 
 ## Valeurs par défaut (modifiables année par année, enregistrées dans Firebase)
 - Congés : 32 jours

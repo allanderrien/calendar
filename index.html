@@ -427,6 +427,10 @@
       <label>☀️ Congés</label>
       <input type="number" id="maxC" value="32" min="0" max="60" oninput="onQuotaInput()">
     </div>
+    <div class="param" id="reportParam" style="display:none">
+      <label>↪ Report de n-1</label>
+      <input type="number" id="reportIn" value="0" min="0" max="10" oninput="onQuotaInput()">
+    </div>
     <div class="param">
       <label>🔄 Récup max</label>
       <input type="number" id="maxR" value="14" min="0" max="40" oninput="onQuotaInput()">
@@ -443,6 +447,7 @@
     <div class="val" id="kC">–</div>
     <div class="sub">Congés restants</div>
     <div class="used" id="uC"></div>
+    <div class="used" id="wC"></div>
   </div>
   <div class="kpi t">
     <div class="val" id="kT">–</div>
@@ -634,7 +639,7 @@ function getFeries() { return FERIES_BY_YEAR[currentYear]; }
 function pad(n) { return String(n).padStart(2,'0'); }
 function ds(y,m,d) { return `${y}-${pad(m+1)}-${pad(d)}`; }
 function isWE(y,m,d) { const w = new Date(y,m,d).getDay(); return w===0||w===6; }
-function isFerie(s) { return !!getFeries()[s]; }
+function isFerie(s) { return !!(FERIES_BY_YEAR[s.slice(0,4)] || {})[s]; }
 function isWorkday(y,m,d) { return !isWE(y,m,d) && !isFerie(ds(y,m,d)); }
 
 function fmtDate(s) {
@@ -942,10 +947,41 @@ function renderFeries() {
 // ── Plafonds annuels ──
 const DEFAULT_QUOTAS = { conge: 32, recup: 14, tele: 34 };
 
-function getQuota(year) { return { ...DEFAULT_QUOTAS, ...(quotas[year] || {}) }; }
+const FIRST_YEAR = 2026;      // pas de données n-1 : report saisi à la main
+const MAX_REPORT = 10;        // congés reportables, à poser avant le 1er mai
+
+function getQuota(year) { return { ...DEFAULT_QUOTAS, report: 0, ...(quotas[year] || {}) }; }
+
+// Congés posés (jours ouvrés) sur une année, éventuellement jusqu'au 30 avril
+function countConges(year, untilApril) {
+  return Object.entries(marked).filter(([s,v]) => {
+    if (v !== 'conge') return false;
+    const [y,mo,d] = s.split('-').map(Number);
+    if (y !== year || !isWorkday(y,mo-1,d)) return false;
+    return !untilApril || mo <= 4;
+  }).length;
+}
+
+// Report reçu de l'année n-1 (plafonné à MAX_REPORT)
+function reportIn(year) {
+  if (year <= FIRST_YEAR) return Math.min(MAX_REPORT, Math.max(0, +getQuota(year).report || 0));
+  const rest = getQuota(year-1).conge + reportKept(year-1) - countConges(year-1);
+  return Math.min(MAX_REPORT, Math.max(0, rest));
+}
+
+// Report non consommé avant le 1er mai : perdu une fois la date passée
+function reportLost(year) {
+  const r = reportIn(year);
+  if (!r || todayStr <= `${year}-04-30`) return 0;
+  return Math.max(0, r - countConges(year, true));
+}
+
+function reportKept(year) { return reportIn(year) - reportLost(year); }
 
 function fillQuotaInputs() {
   const q = getQuota(currentYear);
+  document.getElementById('reportParam').style.display = currentYear <= FIRST_YEAR ? '' : 'none';
+  if (document.activeElement !== document.getElementById('reportIn')) document.getElementById('reportIn').value = q.report;
   const set = (id, v) => { const el = document.getElementById(id); if (document.activeElement !== el) el.value = v; };
   set('maxC', q.conge); set('maxR', q.recup); set('maxT', q.tele);
 }
@@ -957,8 +993,10 @@ function readQuotas() {
 
 function onQuotaInput() {
   const {mC,mR,mT} = readQuotas();
-  dbSet('quotas/'+currentYear, { conge: mC, recup: mR, tele: mT });
-  quotas[currentYear] = { conge: mC, recup: mR, tele: mT };
+  const report = Math.min(MAX_REPORT, Math.max(0, +document.getElementById('reportIn').value || 0));
+  const q = { conge: mC, recup: mR, tele: mT, report };
+  dbSet('quotas/'+currentYear, q);
+  quotas[currentYear] = q;
   update();
 }
 
@@ -974,10 +1012,16 @@ function countMk(type) {
 function update() {
   const {mC,mR,mT} = readQuotas();
   const uC=countMk('conge'), uR=countMk('recup'), uT=countMk('tele');
-  document.getElementById('kC').textContent = mC-uC;
+  const rIn = reportIn(currentYear), rLost = reportLost(currentYear);
+  const rKept = rIn - rLost;
+  document.getElementById('kC').textContent = mC + rKept - uC;
   document.getElementById('kT').textContent = mT-uT;
   document.getElementById('kR').textContent = mR-uR;
-  document.getElementById('uC').textContent = `${uC} utilisé${uC>1?'s':''} / ${mC}`;
+  document.getElementById('uC').textContent = `${uC} utilisé${uC>1?'s':''} / ${mC}` + (rIn ? ` + ${rKept} reporté${rKept>1?'s':''}` : '');
+  const toPose = Math.max(0, rIn - countConges(currentYear, true));
+  document.getElementById('wC').textContent =
+    rLost ? `${rLost} reporté${rLost>1?'s':''} perdu${rLost>1?'s':''} (non posé${rLost>1?'s':''} avant le 1er mai)`
+    : toPose ? `${toPose} reporté${toPose>1?'s':''} à poser avant le 1er mai` : '';
   document.getElementById('uT').textContent = `${uT} utilisé${uT>1?'s':''} / ${mT}`;
   document.getElementById('uR').textContent = `${uR} utilisé${uR>1?'s':''} / ${mR}`;
 }
@@ -1018,7 +1062,8 @@ function copySheets() {
   rows.push([]);
   rows.push(['BILAN']);
   rows.push(['','Utilisés','Max','Restants']);
-  rows.push(['Congés',uC,mC,mC-uC]);
+  const rKept = reportKept(currentYear);
+  rows.push(['Congés',uC,mC+rKept,mC+rKept-uC,rKept ? `dont ${rKept} reportés de ${currentYear-1}` : '']);
   rows.push(['Récup',uR,mR,mR-uR]);
   rows.push(['Télétravail',uT,mT,mT-uT]);
   rows.push([]);
