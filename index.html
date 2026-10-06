@@ -262,7 +262,7 @@
   .d.conge.validated        { outline-color: var(--green); }
   .d.tele.validated         { outline-color: var(--purple); }
   .d.recup.validated        { outline-color: var(--amber); }
-  .d.has-rdv.validated:not(.conge):not(.tele):not(.recup) { outline-color: var(--accent); }
+  .d.has-rdv.validated:not(.conge):not(.tele):not(.recup):not(.half) { outline-color: var(--accent); }
 
   /* ── Legend ── */
   .legend { display: flex; gap: 14px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
@@ -589,7 +589,7 @@ const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin',
 const DOW = ['L','M','M','J','V','S','D'];
 
 // State
-let marked = {};          // 'YYYY-MM-DD' → 'conge'|'tele'|'recup'
+let marked = {};          // 'YYYY-MM-DD' → 'conge'|'tele'|'recup' (journée) ou { am, pm } (demi-journées)
 let rdvData = {};         // 'YYYY-MM-DD' → { client, ville }
 let validated = {};       // 'YYYY-MM-DD' → true
 let comments = {};        // 'YYYY-MM-DD' → { objet, lieu }
@@ -675,9 +675,9 @@ function setMode(m) {
     if (btn) btn.className = 'mode-btn' + (k===m ? ' '+map[k] : '');
   });
   const hints = {
-    conge:  '← Cliquez sur un jour ouvrable pour marquer un congé',
-    tele:   '← Cliquez sur un jour ouvrable pour marquer du télétravail',
-    recup:  '← Cliquez sur un jour ouvrable pour marquer une récup',
+    conge:  '← Cliquez sur un jour ouvrable pour marquer un congé · clics successifs : journée, matin, après-midi, effacé · Maj+clic ou clic droit : note',
+    tele:   '← Cliquez sur un jour ouvrable pour marquer du télétravail · clics successifs : journée, matin, après-midi, effacé · Maj+clic ou clic droit : note',
+    recup:  '← Cliquez sur un jour ouvrable pour marquer une récup · clics successifs : journée, matin, après-midi, effacé · Maj+clic ou clic droit : note',
     rdv:    '← Cliquez sur n\'importe quel jour pour ajouter/modifier un RDV',
     bday:   '← Cliquez sur un jour (quel qu\'il soit) pour ajouter/modifier un anniversaire · récurrent chaque année',
     reset:  '← Cliquez sur un jour pour effacer son marquage',
@@ -686,8 +686,58 @@ function setMode(m) {
   document.getElementById('hint').textContent = hints[m] || '';
 }
 
+// ── Demi-journées ──
+const CAT_VAR = { conge:'green', tele:'purple', recup:'amber' };
+// Poids d'une demi-journée dans les compteurs (la récup en demi-journée ne compte pas)
+const HALF_WEIGHT = { conge: 0.5, tele: 0.5, recup: 0 };
+
+function halves(v) {
+  if (!v) return { am: null, pm: null };
+  if (typeof v === 'string') return { am: v, pm: v };
+  return { am: v.am || null, pm: v.pm || null };
+}
+
+// Poids d'un marquage de type `type` pour la valeur Firebase `v`
+function dayWeight(v, type) {
+  const h = halves(v);
+  if (h.am === type && h.pm === type) return 1;
+  return ((h.am === type ? 1 : 0) + (h.pm === type ? 1 : 0)) * HALF_WEIGHT[type];
+}
+
+function markLabel(h) {
+  if (h.am && h.am === h.pm) return h.am.toUpperCase();
+  return [h.am ? 'MATIN ' + h.am.toUpperCase() : '', h.pm ? 'APRÈS-MIDI ' + h.pm.toUpperCase() : ''].filter(Boolean).join(' · ');
+}
+
+function fmtN(n) { return String(n).replace('.', ','); }
+
+function writeHalves(s, am, pm) {
+  if (!am && !pm) dbRemove('marked/'+s);
+  else if (am === pm) dbSet('marked/'+s, am);
+  else {
+    const o = {};
+    if (am) o.am = am;
+    if (pm) o.pm = pm;
+    dbSet('marked/'+s, o);
+  }
+}
+
+// Cycle au clic : journée → matin → après-midi → effacé
+function cycleHalf(s, type) {
+  const h = halves(marked[s]);
+  const inAm = h.am === type, inPm = h.pm === type;
+  let am = h.am, pm = h.pm;
+  if (inAm && inPm)      { pm = null; }                         // journée → matin
+  else if (inAm)         { am = null; if (!pm) pm = type; }     // matin → après-midi (si libre)
+  else if (inPm)         { pm = null; }                         // après-midi → effacé
+  else if (am && !pm)    { pm = type; }                         // matin pris par une autre catégorie
+  else if (pm && !am)    { am = type; }
+  else                   { am = type; pm = type; }              // jour libre ou occupé : journée
+  writeHalves(s, am, pm);
+}
+
 // ── Day click ──
-function clickDay(s) {
+function clickDay(s, ev) {
   if (mode === 'rdv') {
     openModal(s);
     return;
@@ -709,8 +759,8 @@ function clickDay(s) {
     dbRemove('validated/'+s);
     dbRemove('comments/'+s);
   } else {
-    if (marked[s] === mode) openCommentModal(s);
-    else dbSet('marked/'+s, mode);
+    if (ev && (ev.shiftKey || ev.type === 'contextmenu')) { if (marked[s]) openCommentModal(s); }
+    else cycleHalf(s, mode);
   }
 }
 
@@ -769,7 +819,7 @@ function deleteBday() {
 function openCommentModal(s) {
   modalDate = s;
   modalMode = 'comment';
-  const type = marked[s];
+  const type = halves(marked[s]).am || halves(marked[s]).pm;
   const icons = { conge: '☀️', tele: '💻', recup: '🔄' };
   const existing = comments[s];
   document.getElementById('modal-title').textContent = `${icons[type] || '✏️'} Note`;
@@ -871,9 +921,19 @@ function renderCal() {
       const bday = birthdays[bdayKey(s)];
       const isTd = s===todayStr;
 
+      const hv = halves(mk);
+      const isHalf = typeof mk === 'object' && mk !== null;
+      let halfStyle = '';
+      if (isHalf && !fe && !we) {
+        const bg = c => c ? `var(--${CAT_VAR[c]}-bg)` : 'transparent';
+        const col = hv.am && hv.pm ? 'var(--text)' : `var(--${CAT_VAR[hv.am || hv.pm]})`;
+        halfStyle = ` style="background:linear-gradient(90deg,${bg(hv.am)} 50%,${bg(hv.pm)} 50%);color:${col};font-weight:500"`;
+      }
+
       let cls = 'd';
       if (fe)                cls += ' ferie';
       else if (we)           cls += ' weekend';
+      else if (isHalf)       cls += ' half workday';
       else if (mk==='conge') cls += ' conge workday';
       else if (mk==='tele')  cls += ' tele workday';
       else if (mk==='recup') cls += ' recup workday';
@@ -888,10 +948,10 @@ function renderCal() {
       const rdvInfo = hasRdv ? `${rdvData[s].client}${rdvData[s].ville ? ' — '+rdvData[s].ville : ''}` : '';
       const ferieInfo = fe ? feries[s] : '';
       const commentInfo = hasComment ? `${comments[s].objet || ''}${comments[s].objet && comments[s].lieu ? ' — ' : ''}${comments[s].lieu || ''}` : '';
-      const titleParts = [ferieInfo, bday ? '🎂 '+bday.nom : '', mk ? mk.toUpperCase() : '', rdvInfo, commentInfo, isValidated ? '✅ VALIDÉ' : ''].filter(Boolean);
+      const titleParts = [ferieInfo, bday ? '🎂 '+bday.nom : '', mk ? markLabel(hv) : '', rdvInfo, commentInfo, isValidated ? '✅ VALIDÉ' : ''].filter(Boolean);
       const title = titleParts.join(' · ');
 
-      html += `<div class="${cls}" onclick="clickDay('${s}')" title="${title}">${day}</div>`;
+      html += `<div class="${cls}"${halfStyle} onclick="clickDay('${s}',event)" oncontextmenu="event.preventDefault();clickDay('${s}',event)" title="${title}">${day}</div>`;
     }
 
     html += `</div></div>`;
@@ -959,12 +1019,12 @@ function getQuota(year) { return { ...DEFAULT_QUOTAS, report: 0, ...(quotas[year
 
 // Congés posés (jours ouvrés) sur une année, éventuellement jusqu'au 30 avril
 function countConges(year, untilApril) {
-  return Object.entries(marked).filter(([s,v]) => {
-    if (v !== 'conge') return false;
+  return Object.entries(marked).reduce((n,[s,v]) => {
     const [y,mo,d] = s.split('-').map(Number);
-    if (y !== year || !isWorkday(y,mo-1,d)) return false;
-    return !untilApril || mo <= 4;
-  }).length;
+    if (y !== year || !isWorkday(y,mo-1,d)) return n;
+    if (untilApril && mo > 4) return n;
+    return n + dayWeight(v, 'conge');
+  }, 0);
 }
 
 // Report reçu de l'année n-1 (plafonné à MAX_REPORT)
@@ -1007,11 +1067,11 @@ function onQuotaInput() {
 
 // ── KPIs ──
 function countMk(type) {
-  return Object.entries(marked).filter(([s,v]) => {
-    if (v !== type) return false;
+  return Object.entries(marked).reduce((n,[s,v]) => {
     const [y,mo,d] = s.split('-').map(Number);
-    return y === currentYear && isWorkday(y,mo-1,d);
-  }).length;
+    if (y !== currentYear || !isWorkday(y,mo-1,d)) return n;
+    return n + dayWeight(v, type);
+  }, 0);
 }
 
 function update() {
@@ -1019,16 +1079,16 @@ function update() {
   const uC=countMk('conge'), uR=countMk('recup'), uT=countMk('tele');
   const rIn = reportIn(currentYear), rLost = reportLost(currentYear);
   const rKept = rIn - rLost;
-  document.getElementById('kC').textContent = mC + rKept - uC;
-  document.getElementById('kT').textContent = mT-uT;
-  document.getElementById('kR').textContent = mR-uR;
-  document.getElementById('uC').textContent = `${uC} utilisé${uC>1?'s':''} / ${mC}` + (rIn ? ` + ${rKept} reporté${rKept>1?'s':''}` : '');
+  document.getElementById('kC').textContent = fmtN(mC + rKept - uC);
+  document.getElementById('kT').textContent = fmtN(mT-uT);
+  document.getElementById('kR').textContent = fmtN(mR-uR);
+  document.getElementById('uC').textContent = `${fmtN(uC)} utilisé${uC>1?'s':''} / ${mC}` + (rIn ? ` + ${rKept} reporté${rKept>1?'s':''}` : '');
   const toPose = Math.max(0, rIn - countConges(currentYear, true));
   document.getElementById('wC').textContent =
-    rLost ? `${rLost} reporté${rLost>1?'s':''} perdu${rLost>1?'s':''} (non posé${rLost>1?'s':''} avant le 1er mai)`
-    : toPose ? `${toPose} reporté${toPose>1?'s':''} à poser avant le 1er mai` : '';
-  document.getElementById('uT').textContent = `${uT} utilisé${uT>1?'s':''} / ${mT}`;
-  document.getElementById('uR').textContent = `${uR} utilisé${uR>1?'s':''} / ${mR}`;
+    rLost ? `${fmtN(rLost)} reporté${rLost>1?'s':''} perdu${rLost>1?'s':''} (non posé${rLost>1?'s':''} avant le 1er mai)`
+    : toPose ? `${fmtN(toPose)} reporté${toPose>1?'s':''} à poser avant le 1er mai` : '';
+  document.getElementById('uT').textContent = `${fmtN(uT)} utilisé${uT>1?'s':''} / ${mT}`;
+  document.getElementById('uR').textContent = `${fmtN(uR)} utilisé${uR>1?'s':''} / ${mR}`;
 }
 
 // ── Copy to Sheets ──
@@ -1053,8 +1113,10 @@ function copySheets() {
       if (dw===0||dw===6) continue;
       const dn = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][dw];
       const fe = feries[s]||'';
-      const mk = marked[s]||'';
-      const label = mk==='conge'?'CONGÉ':mk==='tele'?'TÉLÉTRAVAIL':mk==='recup'?'RÉCUP':'';
+      const NAMES = { conge:'CONGÉ', tele:'TÉLÉTRAVAIL', recup:'RÉCUP' };
+      const hh = halves(marked[s]);
+      const label = hh.am && hh.am === hh.pm ? NAMES[hh.am]
+        : [hh.am ? 'MATIN '+NAMES[hh.am] : '', hh.pm ? 'APRÈS-MIDI '+NAMES[hh.pm] : ''].filter(Boolean).join(' + ');
       const rdv = rdvData[s];
       const cmt = comments[s];
       rows.push([s, dn, MONTHS_FR[m], 'S'+getWeek(dt), fe?'OUI':'', label,
@@ -1068,9 +1130,9 @@ function copySheets() {
   rows.push(['BILAN']);
   rows.push(['','Utilisés','Max','Restants']);
   const rKept = reportKept(currentYear);
-  rows.push(['Congés',uC,mC+rKept,mC+rKept-uC,rKept ? `dont ${rKept} reportés de ${currentYear-1}` : '']);
-  rows.push(['Récup',uR,mR,mR-uR]);
-  rows.push(['Télétravail',uT,mT,mT-uT]);
+  rows.push(['Congés',fmtN(uC),mC+rKept,fmtN(mC+rKept-uC),rKept ? `dont ${rKept} reportés de ${currentYear-1}` : '']);
+  rows.push(['Récup',fmtN(uR),mR,fmtN(mR-uR)]);
+  rows.push(['Télétravail',fmtN(uT),mT,fmtN(mT-uT)]);
   rows.push([]);
   rows.push([`JOURS FÉRIÉS ${currentYear}`]);
   Object.entries(feries).forEach(([s,n]) => rows.push([s,n]));
