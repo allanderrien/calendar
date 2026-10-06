@@ -229,12 +229,16 @@
   .d.conge  { background: var(--green-bg);  color: var(--green);  font-weight: 500; }
   .d.tele   { background: var(--purple-bg); color: var(--purple); font-weight: 500; }
   .d.recup  { background: var(--amber-bg);  color: var(--amber);  font-weight: 500; }
-  .d.has-rdv { background: var(--blue-bg);  color: var(--accent); font-weight: 500; }
+  .d.has-rdv { box-shadow: 0 0 0 1.5px var(--accent) inset; font-weight: 500; }
+  .d.has-rdv:not(.conge):not(.tele):not(.recup) { color: var(--accent); }
   .d.today  { box-shadow: 0 0 0 1px var(--accent2) inset; }
+  .d.has-rdv.today { box-shadow: 0 0 0 1.5px var(--accent) inset, 0 0 0 3px var(--accent2) inset; }
 
   /* ── Anniversaire : contour extérieur ── */
   .d.birthday { box-shadow: 0 0 0 1.5px var(--pink); }
   .d.birthday.today { box-shadow: 0 0 0 1.5px var(--pink), 0 0 0 1px var(--accent2) inset; }
+  .d.birthday.has-rdv { box-shadow: 0 0 0 1.5px var(--pink), 0 0 0 1.5px var(--accent) inset; }
+  .d.birthday.has-rdv.today { box-shadow: 0 0 0 1.5px var(--pink), 0 0 0 1.5px var(--accent) inset, 0 0 0 3px var(--accent2) inset; }
   .d.workday { cursor: pointer; }
   .d.workday:hover { background: var(--surface2); color: var(--accent2); }
   .d.conge:hover, .d.tele:hover, .d.recup:hover, .d.has-rdv:hover { opacity: 0.8; }
@@ -254,10 +258,11 @@
 
   /* ── Validated ── */
   .d.validated              { outline: 1.5px solid; outline-offset: -1.5px; }
+  .d.validated.has-rdv      { outline-offset: -3px; }
   .d.conge.validated        { outline-color: var(--green); }
   .d.tele.validated         { outline-color: var(--purple); }
   .d.recup.validated        { outline-color: var(--amber); }
-  .d.has-rdv.validated      { outline-color: var(--accent); }
+  .d.has-rdv.validated:not(.conge):not(.tele):not(.recup) { outline-color: var(--accent); }
 
   /* ── Legend ── */
   .legend { display: flex; gap: 14px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
@@ -268,7 +273,7 @@
   .ldot.t  { background: var(--purple-bg); border: 1px solid var(--purple); }
   .ldot.r  { background: var(--amber-bg);  border: 1px solid var(--amber); }
   .ldot.bday { border: 1.5px solid var(--pink); }
-  .ldot.rdv { background: var(--blue-bg); border: 1px solid var(--accent); border-radius: 50%; }
+  .ldot.rdv { background: transparent; border: 1.5px solid var(--accent); }
 
   /* ── Sections (RDV list + Fériés) ── */
   .section {
